@@ -170,16 +170,16 @@ func _handle_response(data: Dictionary) -> void:
 			tool_result_ready.emit(tname, result)
 
 			# Screenshot returns a vision content block; everything else is JSON.
-			var content: Variant
+			var tool_content: Variant
 			if tname == "shot" and not result.has("error"):
-				content = _build_screenshot_content(result)
+				tool_content = _build_screenshot_content(result)
 			else:
-				content = _compress_result(result)
+				tool_content = _compress_result(result)
 
 			results.append({
 				"type": "tool_result",
 				"tool_use_id": tid,
-				"content": content
+				"content": tool_content
 			})
 
 		_messages.append({"role": "user", "content": results})
