@@ -444,7 +444,7 @@ func _fetch_asset(input: Dictionary) -> Dictionary:
 	var res_path := dest.path_join(filename)
 
 	if extract and filename.get_extension().to_lower() == "zip":
-		var zip_result := _scene_tools.extract_zip(res_path, dest)
+		var zip_result: Dictionary = _scene_tools.extract_zip(res_path, dest)
 		if not zip_result.has("error") and input.get("delete_zip", true):
 			var dir := DirAccess.open(dest)
 			if dir:
