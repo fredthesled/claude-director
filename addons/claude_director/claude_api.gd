@@ -11,7 +11,7 @@ signal conversation_finished
 const API_URL := "https://api.anthropic.com/v1/messages"
 const MODEL := "claude-sonnet-4-6"
 const MAX_TOKENS := 8096
-const MAX_TOOL_ROUNDS := 15
+const MAX_TOOL_ROUNDS := 25
 const MAX_RETRIES := 3
 
 var _api_key: String = ""
@@ -59,6 +59,7 @@ func _send_request() -> void:
 		conversation_finished.emit()
 		return
 
+	_heal_orphaned_tool_uses()
 	thinking_changed.emit(true)
 
 	# Wrap system as array block so the cache_control field is accepted
@@ -148,7 +149,23 @@ func _handle_response(data: Dictionary) -> void:
 
 	if stop_reason == "tool_use" and not tool_uses.is_empty():
 		if _tool_round >= MAX_TOOL_ROUNDS:
-			error_occurred.emit("Reached max tool rounds (%d). Stopping." % MAX_TOOL_ROUNDS)
+			# The assistant message (with tool_use blocks) is already in _messages.
+			# We MUST append matching tool_result blocks before stopping or the
+			# API will reject the next request with a 400 "tool_use without
+			# tool_result" error. Synthetic results let "continue" work cleanly.
+			var synthetic: Array = []
+			for tu in tool_uses:
+				synthetic.append({
+					"type": "tool_result",
+					"tool_use_id": tu.get("id", ""),
+					"content": JSON.stringify({
+						"note": "Paused: max tool rounds reached",
+						"resume": "Send 'continue' to keep going"
+					})
+				})
+			if not synthetic.is_empty():
+				_messages.append({"role": "user", "content": synthetic})
+			error_occurred.emit("Reached %d tool rounds — send 'continue' to keep going." % MAX_TOOL_ROUNDS)
 			conversation_finished.emit()
 			return
 
@@ -484,6 +501,37 @@ func _build_screenshot_content(result: Dictionary) -> Variant:
 			]
 		}
 	]
+
+
+# ── History integrity ────────────────────────────────────────────────────────
+
+func _heal_orphaned_tool_uses() -> void:
+	# If the last message in history is an assistant turn that contains
+	# tool_use blocks with no following tool_result turn, the API will
+	# reject the request with a 400. Patch it by inserting synthetic results.
+	# This covers: network drops mid-round, exceptions, and any future edge cases.
+	if _messages.is_empty():
+		return
+	var last: Dictionary = _messages[-1] as Dictionary
+	if last.get("role") != "assistant":
+		return
+	var lc = last.get("content")
+	if not (lc is Array):
+		return
+	var orphan_ids: Array = []
+	for block in (lc as Array):
+		if (block as Dictionary).get("type", "") == "tool_use":
+			orphan_ids.append((block as Dictionary).get("id", ""))
+	if orphan_ids.is_empty():
+		return
+	var synthetic: Array = []
+	for tid in orphan_ids:
+		synthetic.append({
+			"type": "tool_result",
+			"tool_use_id": str(tid),
+			"content": '{"note":"recovered_from_interruption"}'
+		})
+	_messages.append({"role": "user", "content": synthetic})
 
 
 # ── History management ────────────────────────────────────────────────────────
