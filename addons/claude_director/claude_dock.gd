@@ -20,6 +20,14 @@ var _send_btn: Button
 var _system_prompt: String
 var _tools_def: Array
 
+# Status / test UI
+var _status_dot: Label
+var _status_text: Label
+var _test_btn: Button
+var _test_result_label: Label
+var _context_status_label: Label
+var _test_http: HTTPRequest
+
 
 func _ready() -> void:
 	_load_config()
@@ -87,6 +95,7 @@ func _build_prompts() -> void:
 		)
 	else:
 		_system_prompt = base + "\n── Project Context (res://CLAUDE_DIRECTOR.md) ─────────────────────────\n" + ctx
+	_build_tools_def()
 
 
 func _load_project_context() -> String:
@@ -100,6 +109,8 @@ func _load_project_context() -> String:
 	f.close()
 	return text
 
+
+func _build_tools_def() -> void:
 	_tools_def = [
 		{
 			"name": "files",
@@ -639,29 +650,84 @@ func _build_ui() -> void:
 	clear_btn.pressed.connect(_clear_chat)
 	toolbar.add_child(clear_btn)
 
-	# ── Settings panel ────────────────────────────────────────────────
+	# ── Status strip (always visible, never hidden) ───────────────────
+	var status_bar := HBoxContainer.new()
+	status_bar.add_theme_constant_override("separation", 5)
+	add_child(status_bar)
+
+	_status_dot = Label.new()
+	_status_dot.text = "●"
+	status_bar.add_child(_status_dot)
+
+	_status_text = Label.new()
+	_status_text.text = "Initializing…"
+	_status_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_status_text.add_theme_font_size_override("font_size",
+		roundi(get_theme_font_size("font_size", "Label") * 0.85))
+	status_bar.add_child(_status_text)
+
+	# ── Settings panel (collapsible) ───────────────────────────────────
 	_settings_panel = PanelContainer.new()
 	_settings_panel.visible = false
 	add_child(_settings_panel)
 
 	var sv := VBoxContainer.new()
-	sv.add_theme_constant_override("separation", 6)
+	sv.add_theme_constant_override("separation", 8)
 	_settings_panel.add_child(sv)
 
+	# Key label
 	var key_lbl := Label.new()
 	key_lbl.text = "Anthropic API Key:"
 	sv.add_child(key_lbl)
+
+	# Key input + show/hide
+	var key_row := HBoxContainer.new()
+	key_row.add_theme_constant_override("separation", 4)
+	sv.add_child(key_row)
 
 	_api_key_field = LineEdit.new()
 	_api_key_field.placeholder_text = "sk-ant-api03-..."
 	_api_key_field.secret = true
 	_api_key_field.text = _config.get("api_key", "")
-	sv.add_child(_api_key_field)
+	_api_key_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_api_key_field.text_changed.connect(_on_key_text_changed)
+	key_row.add_child(_api_key_field)
+
+	var show_btn := Button.new()
+	show_btn.text = "👁"
+	show_btn.flat = true
+	show_btn.tooltip_text = "Toggle key visibility"
+	show_btn.pressed.connect(func(): _api_key_field.secret = not _api_key_field.secret)
+	key_row.add_child(show_btn)
+
+	# Action buttons
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 6)
+	sv.add_child(btn_row)
+
+	_test_btn = Button.new()
+	_test_btn.text = "Test Connection"
+	_test_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_test_btn.pressed.connect(_test_connection)
+	btn_row.add_child(_test_btn)
 
 	var save_key_btn := Button.new()
-	save_key_btn.text = "Save Key"
+	save_key_btn.text = "Save & Close"
+	save_key_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_key_btn.pressed.connect(_save_api_key)
-	sv.add_child(save_key_btn)
+	btn_row.add_child(save_key_btn)
+
+	# Test result
+	_test_result_label = Label.new()
+	_test_result_label.text = ""
+	_test_result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sv.add_child(_test_result_label)
+
+	# CLAUDE_DIRECTOR.md context status
+	_context_status_label = Label.new()
+	_context_status_label.text = ""
+	_context_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sv.add_child(_context_status_label)
 
 	# ── Chat history ──────────────────────────────────────────────────
 	_chat_scroll = ScrollContainer.new()
@@ -712,9 +778,17 @@ func _build_ui() -> void:
 
 func _setup_api() -> void:
 	var tools_script = load("res://addons/claude_director/scene_tools.gd")
+	if not tools_script:
+		push_error("ClaudeDirector: scene_tools.gd failed to load")
+		_update_status("error", "scene_tools.gd failed to load — check Godot Output panel")
+		return
 	_tools = tools_script.new()
 
 	var api_script = load("res://addons/claude_director/claude_api.gd")
+	if not api_script:
+		push_error("ClaudeDirector: claude_api.gd failed to load")
+		_update_status("error", "claude_api.gd failed to load — check Godot Output panel")
+		return
 	_api = api_script.new()
 	add_child(_api)
 
@@ -726,20 +800,41 @@ func _setup_api() -> void:
 	_api.thinking_changed.connect(_on_thinking)
 	_api.conversation_finished.connect(_on_finished)
 
+	# Set initial connection status from saved config
+	if _config.get("api_key", "").is_empty():
+		_update_status("none")
+	else:
+		_update_status("saved")
+
 
 # ── Settings Handlers ──────────────────────────────────────────────────────
 
 func _toggle_settings() -> void:
 	_settings_panel.visible = not _settings_panel.visible
+	if _settings_panel.visible:
+		_test_result_label.text = ""
+		_refresh_context_status()
+
+
+func _on_key_text_changed(_new_text: String) -> void:
+	# Clear stale test result when key changes
+	if is_instance_valid(_test_result_label):
+		_test_result_label.text = ""
 
 
 func _save_api_key() -> void:
-	_config["api_key"] = _api_key_field.text.strip_edges()
+	var key := _api_key_field.text.strip_edges()
+	_config["api_key"] = key
 	_save_config()
-	_build_prompts()  # re-reads CLAUDE_DIRECTOR.md so context changes take effect
-	_api.configure(_config.get("api_key", ""), _system_prompt, _tools_def, _tools)
+	_build_prompts()  # re-reads CLAUDE_DIRECTOR.md
+	if is_instance_valid(_api):
+		_api.configure(key, _system_prompt, _tools_def, _tools)
 	_settings_panel.visible = false
-	_append_bbcode("[color=#88ff88]✓ Settings saved. Project context reloaded.[/color]\n\n")
+	if key.is_empty():
+		_update_status("none")
+	else:
+		_update_status("saved", "Key saved — click ⚙ → Test Connection to verify")
+	_append_bbcode("[color=#88ff88]✓ Saved. Click Test Connection (⚙) to verify the key.[/color]\n\n")
 
 
 # ── Chat Handlers ──────────────────────────────────────────────────────────
@@ -761,6 +856,10 @@ func _on_input_event(event: InputEvent) -> void:
 
 func _submit() -> void:
 	if _is_busy:
+		return
+	if not is_instance_valid(_api):
+		_append_bbcode("[color=#ff6666]Plugin not ready — check Godot Output for errors.[/color]\n\n")
+		_settings_panel.visible = true
 		return
 	var text := _user_input.text.strip_edges()
 	if text.is_empty():
@@ -813,6 +912,138 @@ func _on_finished() -> void:
 	_set_interactive(true)
 	_thinking_label.text = ""
 	_scroll_bottom()
+
+
+# ── Status & Validation ────────────────────────────────────────────────────
+
+func _update_status(state: String, msg: String = "") -> void:
+	if not is_instance_valid(_status_dot):
+		return
+	var color: Color
+	var dot := "●"
+	match state:
+		"none":
+			color = Color(0.8, 0.35, 0.35)
+			_status_text.text = msg if msg else "API key not set — click ⚙ to configure"
+		"saved":
+			color = Color(0.9, 0.72, 0.2)
+			_status_text.text = msg if msg else "Key saved — click ⚙ → Test Connection to verify"
+		"testing":
+			color = Color(0.9, 0.8, 0.2)
+			dot = "○"
+			_status_text.text = msg if msg else "Testing connection…"
+		"ok":
+			color = Color(0.3, 0.88, 0.45)
+			_status_text.text = msg if msg else "Connected"
+		"fail":
+			color = Color(0.9, 0.35, 0.35)
+			_status_text.text = msg if msg else "Key invalid — click ⚙ to fix"
+		"error":
+			color = Color(0.9, 0.35, 0.35)
+			dot = "!"
+			_status_text.text = msg if msg else "Plugin error — check Godot Output"
+		_:
+			color = Color(0.6, 0.6, 0.6)
+			_status_text.text = msg
+	_status_dot.text = dot
+	_status_dot.add_theme_color_override("font_color", color)
+	_status_text.add_theme_color_override("font_color", color)
+
+
+func _refresh_context_status() -> void:
+	if not is_instance_valid(_context_status_label):
+		return
+	var ctx := _load_project_context()
+	if ctx.is_empty():
+		_context_status_label.text = "⚠ No CLAUDE_DIRECTOR.md — create one to define project context"
+		_context_status_label.add_theme_color_override("font_color", Color(0.8, 0.6, 0.2))
+	else:
+		_context_status_label.text = "✓ CLAUDE_DIRECTOR.md loaded (%d chars)" % ctx.length()
+		_context_status_label.add_theme_color_override("font_color", Color(0.35, 0.8, 0.45))
+
+
+func _test_connection() -> void:
+	var key := _api_key_field.text.strip_edges()
+
+	if key.is_empty():
+		_show_test_result(false, "Enter an API key first")
+		return
+
+	if not key.begins_with("sk-ant-"):
+		_show_test_result(false, "Key should begin with 'sk-ant-' — verify you copied it fully")
+		return
+
+	if key.length() < 40:
+		_show_test_result(false, "Key looks too short — verify you copied the whole thing")
+		return
+
+	_test_btn.disabled = true
+	_test_btn.text = "Testing…"
+	_update_status("testing")
+	_test_result_label.text = ""
+
+	# Lazy-create a dedicated HTTPRequest for connection tests
+	if not is_instance_valid(_test_http):
+		_test_http = HTTPRequest.new()
+		_test_http.timeout = 15.0
+		add_child(_test_http)
+
+	# Minimal request — Haiku is cheapest; max_tokens=1 keeps cost < $0.000001
+	var body := JSON.stringify({
+		"model": "claude-haiku-4-5-20251001",
+		"max_tokens": 1,
+		"messages": [{"role": "user", "content": "Hi"}]
+	})
+
+	var err := _test_http.request(
+		"https://api.anthropic.com/v1/messages",
+		PackedStringArray([
+			"x-api-key: " + key,
+			"anthropic-version: 2023-06-01",
+			"content-type: application/json"
+		]),
+		HTTPClient.METHOD_POST,
+		body
+	)
+
+	if err != OK:
+		_test_btn.disabled = false
+		_test_btn.text = "Test Connection"
+		_show_test_result(false, "Network error (%d) — check your internet connection" % err)
+		return
+
+	var response: Array = await _test_http.request_completed
+	_test_btn.disabled = false
+	_test_btn.text = "Test Connection"
+
+	var http_code: int = response[1]
+	match http_code:
+		200, 201:
+			_show_test_result(true, "✓ Connected — key is valid and working")
+		401:
+			_show_test_result(false, "✗ Unauthorized (401) — key is invalid or expired")
+		403:
+			_show_test_result(false, "✗ Forbidden (403) — key lacks API access permissions")
+		429:
+			# Rate limit still means the key is valid
+			_show_test_result(true, "✓ Key valid (hit rate limit — wait a moment before sending prompts)")
+		_:
+			var body_text: String = (response[3] as PackedByteArray).get_string_from_utf8()
+			_show_test_result(false, "⚠ HTTP %d — %s" % [http_code, body_text.left(120)])
+
+
+func _show_test_result(ok: bool, message: String) -> void:
+	if not is_instance_valid(_test_result_label):
+		return
+	_test_result_label.text = message
+	_test_result_label.add_theme_color_override(
+		"font_color",
+		Color(0.3, 0.88, 0.45) if ok else Color(0.9, 0.4, 0.35)
+	)
+	if ok:
+		_update_status("ok", "Connected")
+	else:
+		_update_status("fail", "Key problem — see ⚙ settings")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
