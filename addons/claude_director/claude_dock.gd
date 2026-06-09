@@ -743,7 +743,7 @@ func _build_ui() -> void:
 	_chat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_chat_scroll.add_child(_chat_label)
 
-	_chat_label.append_text("[color=#666666]Welcome to Claude Director.\nAsk me to build or modify anything in your game.\nCtrl+Enter to send.[/color]\n\n")
+	_chat_label.append_text("[color=#666666]Welcome to Claude Director.\nAsk me to build or modify anything in your game.\nEnter to send  ·  Shift+Enter for new line[/color]\n\n")
 
 	# ── Thinking indicator ────────────────────────────────────────────
 	_thinking_label = Label.new()
@@ -758,7 +758,7 @@ func _build_ui() -> void:
 	add_child(input_row)
 
 	_user_input = TextEdit.new()
-	_user_input.placeholder_text = "Ask Claude to build something..."
+	_user_input.placeholder_text = "Ask Claude to build something... (Enter to send, Shift+Enter for new line)"
 	_user_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_user_input.custom_minimum_size.y = 60
 	_user_input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
@@ -767,7 +767,7 @@ func _build_ui() -> void:
 
 	_send_btn = Button.new()
 	_send_btn.text = "▶"
-	_send_btn.tooltip_text = "Send (Ctrl+Enter)"
+	_send_btn.tooltip_text = "Send (Enter)"
 	_send_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_send_btn.custom_minimum_size.x = 32
 	_send_btn.pressed.connect(_submit)
@@ -849,7 +849,10 @@ func _clear_chat() -> void:
 func _on_input_event(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var ke := event as InputEventKey
-		if ke.pressed and ke.ctrl_pressed and ke.keycode == KEY_ENTER:
+		if ke.pressed and ke.keycode == KEY_ENTER:
+			if ke.shift_pressed:
+				return  # Shift+Enter: fall through to TextEdit → inserts newline
+			# Plain Enter (or Ctrl+Enter): submit
 			_submit()
 			get_viewport().set_input_as_handled()
 
