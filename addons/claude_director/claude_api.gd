@@ -115,7 +115,11 @@ func _on_completed(result: int, code: int, _headers: PackedStringArray, body: Pa
 		return
 
 	if code != 200:
-		error_occurred.emit("API error %d: %s" % [code, body.get_string_from_utf8()])
+		var msg := body.get_string_from_utf8()
+		if code == 429:
+			error_occurred.emit("Rate limit (429) — session history is too large. Click ↺ to clear history, then continue.")
+		else:
+			error_occurred.emit("API error %d: %s" % [code, msg])
 		conversation_finished.emit()
 		return
 
@@ -605,6 +609,7 @@ func _compress_result(result: Dictionary) -> String:
 	if result.has("painted"):  m["painted"]  = result["painted"]    # paint
 	if result.has("animation"):m["animation"]= result["animation"]  # anim
 	if result.has("on"):       m["on"]       = result["on"]         # res_load/res_new
+	if result.has("bytes"):    m["bytes"]    = result["bytes"]      # write — confirms size
 	return JSON.stringify(m)
 
 
@@ -656,7 +661,10 @@ func _compress_assistant_content(content: Array) -> Array:
 		var ni := (b["input"] as Dictionary).duplicate()
 		for key in ["content", "old", "new"]:
 			if ni.has(key) and str(ni[key]).length() > 120:
-				ni[key] = str(ni[key]).left(120) + "…"
+				# Use a clear placeholder — NOT a truncated snippet.
+				# If Claude sees truncated text it will re-write/re-patch
+				# thinking the original call sent incomplete content.
+				ni[key] = "[%d chars — written successfully, not stored in history]" % str(ni[key]).length()
 		b["input"] = ni
 		out.append(b)
 	return out
