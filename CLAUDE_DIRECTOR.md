@@ -16,8 +16,10 @@ drooling in the replay as the game wears on.
 
 ## Viewport & Rendering
 - Forward+ renderer, default window resolution.
-- Style: low-poly/primitive-built cartoony ("chibi blob") 3D characters —
-  everything is generated procedurally in code, no imported art assets.
+- Style: stylized low-poly characters (imported KayKit "Adventurers" models)
+  on a procedurally-built court/hoop/ball. Court/hoop/ball geometry is
+  generated in code; characters are imported rigged/animated glb models with
+  a procedural cartoony face grafted onto the head bone.
 
 ## Physics Layers
 - 1: world (floor/walls/rim collider)
@@ -54,9 +56,19 @@ drooling in the replay as the game wears on.
   attempt when defending close to the ball carrier)
 
 ## Coding Conventions
-- Everything is built procedurally in `_ready()` — no hand-authored `.tscn`
-  node trees beyond `main.tscn`'s single root. Keep new gameplay objects
-  consistent with this (a script that builds its own visuals/collision).
+- Everything is assembled procedurally in `_ready()` — no hand-authored
+  `.tscn` node trees beyond `main.tscn`'s single root. Geometry that doesn't
+  need to be imported (court/hoop/ball) is generated in code; characters
+  instance an imported `PackedScene` instead. Keep new gameplay objects
+  consistent with this (a script that builds/instances its own
+  visuals/collision).
+- `DoubleVisionGhost` (`scripts/fx/double_vision_ghost.gd`) works by calling
+  `target.duplicate()`, so `target` must always be a *plain* visual-only node
+  with no gameplay script attached (an imported model instance, or a
+  scriptless `"Visual"` wrapper `Node3D` around primitive meshes — see how
+  `Basketball`/`Hoop`/`CharacterBodyBase` set it up). Pointing it at a
+  scripted node re-runs that script's `_ready()` on the duplicate and
+  recurses/double-registers.
 - Shared character logic lives in `CharacterBodyBase`
   (`scripts/characters/character_body.gd`); `PlayerController` (human) and
   `AiPlayer` (FSM bot) both extend it and call `super._physics_process()`
@@ -76,7 +88,8 @@ drooling in the replay as the game wears on.
   hoop already do this); clones those meshes into a translucent drifting
   ghost copy, scaled by intensity, hidden during replays.
 - **Character faces** (`scripts/characters/character_face.gd`): procedural
-  primitive face (eyes/pupils/brows/mouth/drool) mounted on the head,
+  primitive face (eyes/pupils/brows/mouth/drool) mounted via a
+  `BoneAttachment3D` on the imported model's `head` bone,
   `set_expression(FaceExpression.X, drunk_amount)` swaps look instantly.
 - **Replay camera rig** (`scripts/world/replay_camera_rig.gd`): sideline
   `Camera3D` that scrubs recorded frames, applying a stumble/tilt/bob
@@ -84,8 +97,25 @@ drooling in the replay as the game wears on.
   drool) scaled by intensity — the ball and hoop play back undistorted.
 
 ## Asset Sources
-None — all geometry, materials, and faces are generated in code
-(`PrimitiveMesh` subclasses + `StandardMaterial3D`).
+- `assets/kaykit_adventurers/{Knight,Barbarian}.glb` — KayKit "Adventurers
+  Character Pack" by Kay Lousberg (kaylousberg.com), **CC0** (see
+  `assets/kaykit_adventurers/LICENSE.txt`). Fetched via `raw.githubusercontent.com`
+  from the `KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0` repo —
+  general asset hosts like kenney.nl are blocked by this sandbox's egress
+  policy, so GitHub-hosted CC0 packs are the fallback path when re-fetching
+  or adding more assets from outside an interactive session.
+  - `CharacterBodyBase` (`scripts/characters/character_body.gd`) instances
+    one of these per team (Team A → Knight, Team B → Barbarian — this also
+    gives the teams distinct silhouettes/palettes for free), strips the
+    weapon/helmet/cape meshes hanging off the `handslot_l/handslot_r/head/chest`
+    `BoneAttachment3D` nodes (basketball players don't need swords), and
+    drives the rig's own animations (`Idle`, `Running_A`, `Jump_Idle`,
+    `Throw` for the shot release) via the model's `AnimationPlayer`.
+  - The ball-holding point is the model's existing `handslot_r` bone
+    attachment; the procedural face mounts on the `head` bone attachment.
+- Court/hoop/ball geometry is still generated in code
+  (`PrimitiveMesh` subclasses + `StandardMaterial3D`) — no need to import
+  assets for those.
 
 ## Design Notes / Possible Follow-ups
 - This is a half-court single-hoop interpretation of "3-on-3"; a full-court

@@ -49,6 +49,7 @@ func _run_offense(_delta: float) -> void:
 		if dist_to_hoop < SHOOT_RANGE and _shoot_cooldown <= 0.0 and randf() < 0.02:
 			if face:
 				face.set_expression(face.FaceExpression.HAPPY)
+			play_action_animation("Throw")
 			ball.shoot(hoop.get_rim_target())
 			_shoot_cooldown = 2.0
 			velocity.x = 0

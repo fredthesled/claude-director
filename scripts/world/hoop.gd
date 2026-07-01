@@ -13,16 +13,20 @@ var _cooldown: float = 0.0
 
 
 func _ready() -> void:
-	_build_visuals()
+	var visual := _build_visuals()
 	_build_sensor()
 
 	var ghost := DoubleVisionGhost.new()
-	ghost.target = self
+	ghost.target = visual
 	ghost.max_offset = 0.15
 	add_child(ghost)
 
 
-func _build_visuals() -> void:
+func _build_visuals() -> Node3D:
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	add_child(visual)
+
 	var pole_mat := StandardMaterial3D.new()
 	pole_mat.albedo_color = Color(0.15, 0.15, 0.17)
 
@@ -34,7 +38,7 @@ func _build_visuals() -> void:
 	pole.mesh = pole_mesh
 	pole.position = Vector3(0, (RIM_HEIGHT + 0.5) / 2.0, -0.6)
 	pole.material_override = pole_mat
-	add_child(pole)
+	visual.add_child(pole)
 
 	var backboard := MeshInstance3D.new()
 	var board_mesh := BoxMesh.new()
@@ -45,7 +49,7 @@ func _build_visuals() -> void:
 	board_mat.albedo_color = Color(0.95, 0.95, 0.92, 0.85)
 	board_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	backboard.material_override = board_mat
-	add_child(backboard)
+	visual.add_child(backboard)
 
 	var rim := MeshInstance3D.new()
 	var rim_mesh := TorusMesh.new()
@@ -56,7 +60,7 @@ func _build_visuals() -> void:
 	var rim_mat := StandardMaterial3D.new()
 	rim_mat.albedo_color = Color(0.9, 0.25, 0.1)
 	rim.material_override = rim_mat
-	add_child(rim)
+	visual.add_child(rim)
 
 	var rim_collider := StaticBody3D.new()
 	rim_collider.collision_layer = 1
@@ -68,6 +72,8 @@ func _build_visuals() -> void:
 	rim_shape.position = Vector3(0, RIM_HEIGHT, 0)
 	rim_collider.add_child(rim_shape)
 	add_child(rim_collider)
+
+	return visual
 
 
 func _build_sensor() -> void:

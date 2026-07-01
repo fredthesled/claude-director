@@ -1,13 +1,23 @@
 extends CharacterBody3D
 class_name CharacterBodyBase
-## Shared chibi/cartoony character: oversized head + face, capsule torso,
-## simple swinging limbs. Both the human PlayerController and AiPlayer extend
-## this. Built entirely from primitives in code (PEAK-style "blobby cartoon
-## with expressive face", no external art assets).
+## Shared character: an imported, rigged KayKit "Adventurers" model (CC0,
+## see assets/kaykit_adventurers/LICENSE.txt) with its weapon/helmet/cape
+## accessories stripped off, plus a procedural cartoony face (PEAK-style
+## swappable expressions) mounted on its head bone. Both the human
+## PlayerController and AiPlayer extend this.
+##
+## Team A uses Knight.glb, Team B uses Barbarian.glb — this also gives the
+## two teams a distinct silhouette/palette for free, no material tinting
+## needed.
 
 const GRAVITY := 18.0
-const TEAM_A_COLOR := Color(0.2, 0.45, 0.95)
-const TEAM_B_COLOR := Color(0.92, 0.25, 0.25)
+const MODEL_PATHS := {
+	0: "res://assets/kaykit_adventurers/Knight.glb",     # GameManager.Team.A
+	1: "res://assets/kaykit_adventurers/Barbarian.glb",  # GameManager.Team.B
+}
+const MOVE_ANIM := "Running_A"
+const IDLE_ANIM := "Idle"
+const JUMP_ANIM := "Jump_Idle"
 
 @export var team: int = GameManager.Team.A
 @export var actor_id: String = ""
@@ -16,9 +26,10 @@ var face: CharacterFace
 var hand_marker: Marker3D
 var has_ball: bool = false
 
-var _legs: Array = []
-var _arms: Array = []
-var _walk_t: float = 0.0
+var _visual_root: Node3D
+var _skeleton: Skeleton3D
+var _anim_player: AnimationPlayer
+var _action_lock: float = 0.0
 var _drunk_visual_amount: float = 0.0
 
 const DoubleVisionGhost = preload("res://scripts/fx/double_vision_ghost.gd")
@@ -29,11 +40,11 @@ func _ready() -> void:
 	collision_mask = 1 # world only; characters don't need to collide with each other
 
 	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.32
-	capsule.height = 1.1
+	capsule.radius = 0.35
+	capsule.height = 1.7
 	var col := CollisionShape3D.new()
 	col.shape = capsule
-	col.position.y = 0.75
+	col.position.y = 0.9
 	add_child(col)
 
 	_build_visuals()
@@ -48,66 +59,75 @@ func _exit_tree() -> void:
 
 
 func _build_visuals() -> void:
-	var team_color := TEAM_A_COLOR if team == GameManager.Team.A else TEAM_B_COLOR
-	var body_mat := StandardMaterial3D.new()
-	body_mat.albedo_color = team_color
-	body_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	var model_path: String = MODEL_PATHS[team]
+	var packed: PackedScene = load(model_path)
+	_visual_root = packed.instantiate()
+	_visual_root.name = "Model"
+	add_child(_visual_root)
 
-	var skin_mat := StandardMaterial3D.new()
-	skin_mat.albedo_color = Color(0.96, 0.8, 0.65)
+	_skeleton = _find_skeleton(_visual_root)
+	_anim_player = _find_anim_player(_visual_root)
+	if _anim_player:
+		_anim_player.play(IDLE_ANIM)
 
-	var torso := MeshInstance3D.new()
-	var torso_mesh := CapsuleMesh.new()
-	torso_mesh.radius = 0.3
-	torso_mesh.height = 0.9
-	torso.mesh = torso_mesh
-	torso.position = Vector3(0, 0.75, 0)
-	torso.material_override = body_mat
-	add_child(torso)
+	_strip_accessories(_visual_root)
 
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.34
-	head_mesh.height = 0.68
-	head.mesh = head_mesh
-	head.position = Vector3(0, 1.45, 0)
-	head.material_override = skin_mat
-	add_child(head)
-
-	face = CharacterFace.new()
-	face.name = "Face"
-	head.add_child(face)
-
-	for side in [-1.0, 1.0]:
-		var leg := MeshInstance3D.new()
-		var leg_mesh := CapsuleMesh.new()
-		leg_mesh.radius = 0.1
-		leg_mesh.height = 0.55
-		leg.mesh = leg_mesh
-		leg.position = Vector3(0.16 * side, 0.27, 0)
-		leg.material_override = body_mat
-		add_child(leg)
-		_legs.append(leg)
-
-		var arm := MeshInstance3D.new()
-		var arm_mesh := CapsuleMesh.new()
-		arm_mesh.radius = 0.08
-		arm_mesh.height = 0.5
-		arm.mesh = arm_mesh
-		arm.position = Vector3(0.42 * side, 0.95, 0)
-		arm.material_override = skin_mat
-		add_child(arm)
-		_arms.append(arm)
+	var head_attachment: BoneAttachment3D = _skeleton.get_node_or_null("head") if _skeleton else null
+	if head_attachment:
+		face = CharacterFace.new()
+		face.name = "Face"
+		face.position = Vector3(0, 0.02, 0.14)
+		face.scale = Vector3.ONE * 0.85
+		head_attachment.add_child(face)
 
 	hand_marker = Marker3D.new()
 	hand_marker.name = "HandMarker"
-	hand_marker.position = Vector3(0.42, 0.7, 0.32)
-	add_child(hand_marker)
+	var hand_attachment: BoneAttachment3D = _skeleton.get_node_or_null("handslot_r") if _skeleton else null
+	if hand_attachment:
+		hand_attachment.add_child(hand_marker)
+	else:
+		add_child(hand_marker)
+		hand_marker.position = Vector3(0.42, 1.0, 0.32)
 
 	var ghost := DoubleVisionGhost.new()
-	ghost.target = self
+	ghost.target = _visual_root
 	ghost.max_offset = 0.1
 	add_child(ghost)
+
+
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found:
+			return found
+	return null
+
+
+func _find_anim_player(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_anim_player(child)
+		if found:
+			return found
+	return null
+
+
+## The pack's characters come with weapons/helmets/capes hung off dedicated
+## BoneAttachment3D nodes (handslot_l/handslot_r/head/chest) — not what a
+## basketball player should be carrying, so strip just those meshes. The
+## actual body meshes (Model_Body, Model_Head, etc.) are siblings of the
+## BoneAttachment3D nodes, not children of them, so they're untouched.
+func _strip_accessories(node: Node) -> void:
+	if node is BoneAttachment3D:
+		for child in node.get_children():
+			if child is MeshInstance3D:
+				child.queue_free()
+		return
+	for child in node.get_children():
+		_strip_accessories(child)
 
 
 func _physics_process(delta: float) -> void:
@@ -115,20 +135,30 @@ func _physics_process(delta: float) -> void:
 		return
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
-	_animate_limbs(delta)
+	_update_animation(delta)
 
 
-func _animate_limbs(delta: float) -> void:
-	var planar_speed := Vector2(velocity.x, velocity.z).length()
-	if planar_speed > 0.2:
-		_walk_t += delta * (4.0 + planar_speed)
-	var swing := sin(_walk_t) * clampf(planar_speed / 5.0, 0.0, 1.0) * 0.5
-	if _legs.size() == 2:
-		_legs[0].rotation.x = swing
-		_legs[1].rotation.x = -swing
-	if _arms.size() == 2 and not has_ball:
-		_arms[0].rotation.x = -swing
-		_arms[1].rotation.x = swing
+func _update_animation(delta: float) -> void:
+	_action_lock = maxf(0.0, _action_lock - delta)
+	if not _anim_player or _action_lock > 0.0:
+		return
+
+	var target_anim := IDLE_ANIM
+	if not is_on_floor():
+		target_anim = JUMP_ANIM
+	elif Vector2(velocity.x, velocity.z).length() > 1.0:
+		target_anim = MOVE_ANIM
+
+	if _anim_player.current_animation != target_anim and _anim_player.has_animation(target_anim):
+		_anim_player.play(target_anim, 0.2)
+
+
+## Plays a one-shot action animation (e.g. "Throw" for shooting) and locks
+## out the idle/run/jump animation logic until it's roughly finished.
+func play_action_animation(anim_name: String, lock_time: float = 0.5) -> void:
+	if _anim_player and _anim_player.has_animation(anim_name):
+		_anim_player.play(anim_name)
+		_action_lock = lock_time
 
 
 ## Called by the ReplayCameraRig while this actor is being scrubbed through

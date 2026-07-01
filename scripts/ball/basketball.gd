@@ -17,6 +17,10 @@ func _ready() -> void:
 	collision_layer = BALL_LAYER_BIT
 	collision_mask = 1 # only collide with the floor/world by default
 
+	var visual := Node3D.new()
+	visual.name = "Visual"
+	add_child(visual)
+
 	var mesh_inst := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = RADIUS
@@ -25,7 +29,7 @@ func _ready() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.85, 0.45, 0.12)
 	mesh_inst.material_override = mat
-	add_child(mesh_inst)
+	visual.add_child(mesh_inst)
 
 	var shape := CollisionShape3D.new()
 	var sphere_shape := SphereShape3D.new()
@@ -42,7 +46,7 @@ func _ready() -> void:
 	ReplayManager.register_actor("ball", self)
 
 	var ghost := DoubleVisionGhost.new()
-	ghost.target = self
+	ghost.target = visual
 	ghost.max_offset = 0.08
 	add_child(ghost)
 

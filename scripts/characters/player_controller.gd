@@ -89,6 +89,7 @@ func _handle_ball_actions() -> void:
 		if Input.is_action_just_pressed("action_shoot") and hoop != null:
 			if face:
 				face.set_expression(face.FaceExpression.HAPPY)
+			play_action_animation("Throw")
 			ball.shoot(hoop.get_rim_target())
 		elif Input.is_action_just_pressed("action_pass"):
 			var teammate := _find_nearest_teammate()

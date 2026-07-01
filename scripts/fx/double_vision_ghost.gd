@@ -1,10 +1,16 @@
 extends Node3D
 class_name DoubleVisionGhost
-## Attach as a child of any Node3D that has MeshInstance3D descendants
-## (players, the ball, the hoop). Spawns a translucent duplicate of those
-## meshes that drifts away from the original as GameManager's psychedelic
+## Attach as a child of any Node3D and point `target` at a *plain* visual-only
+## node (no gameplay script attached) — e.g. an imported character model
+## instance, or a "Visual" wrapper around a primitive mesh. Duplicates that
+## node wholesale (preserving skin/skeleton bindings for rigged characters),
+## tints the copy translucent, and drifts it as GameManager's psychedelic
 ## intensity rises, producing a "double vision" effect. Hidden entirely
 ## during instant replays, since replays are exempt from psychedelic FX.
+##
+## `target` must not carry a script that reacts to _ready()/registration
+## (autoload registration, further ghost spawning, etc.) — duplicating it
+## would re-run that logic and recurse. Plain visual nodes have no script.
 
 @export var target: Node3D
 @export var max_offset: float = 0.12
@@ -17,40 +23,28 @@ var _phase: float = randf() * TAU
 func _ready() -> void:
 	if target == null:
 		target = get_parent()
-	# Deferred so the target has finished building its own mesh children first.
+	# Deferred so the target has finished building/instancing itself first.
 	call_deferred("_build_ghost")
 
 
 func _build_ghost() -> void:
-	_ghost_root = Node3D.new()
-	_ghost_root.name = "DoubleVisionGhost"
+	if not is_instance_valid(target):
+		return
+	_ghost_root = target.duplicate()
 	add_child(_ghost_root)
-	_clone_meshes(target, _ghost_root)
+	_tint_translucent(_ghost_root)
 
 
-func _clone_meshes(source: Node, dest_parent: Node3D) -> void:
-	for child in source.get_children():
-		# Skip our own ghost subtree (and any sibling ghost components) so we
-		# don't recursively clone the clones when `target` is our own parent.
-		if child is DoubleVisionGhost or child == _ghost_root:
-			continue
-		if child is MeshInstance3D:
-			var clone := MeshInstance3D.new()
-			clone.mesh = child.mesh
-			clone.transform = child.transform
-			var ghost_mat := StandardMaterial3D.new()
-			ghost_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.35)
-			ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			ghost_mat.albedo_color = Color(0.85, 0.95, 1.0, 0.4)
-			clone.material_override = ghost_mat
-			clone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			dest_parent.add_child(clone)
-		elif child is Node3D and child.get_child_count() > 0:
-			var sub := Node3D.new()
-			sub.transform = child.transform
-			dest_parent.add_child(sub)
-			_clone_meshes(child, sub)
+func _tint_translucent(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.85, 0.95, 1.0, 0.4)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		node.material_override = mat
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children():
+		_tint_translucent(child)
 
 
 func _process(delta: float) -> void:
@@ -74,10 +68,14 @@ func _process(delta: float) -> void:
 		cos(_phase * 0.8) * max_offset * intensity
 	)
 	_ghost_root.position = offset
+	_update_alpha(_ghost_root, 0.45 * intensity)
 
-	for c in _ghost_root.get_children():
-		if c is MeshInstance3D and c.material_override is StandardMaterial3D:
-			var mat: StandardMaterial3D = c.material_override
-			var col := mat.albedo_color
-			col.a = 0.45 * intensity
-			mat.albedo_color = col
+
+func _update_alpha(node: Node, alpha: float) -> void:
+	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
+		var mat: StandardMaterial3D = node.material_override
+		var col := mat.albedo_color
+		col.a = alpha
+		mat.albedo_color = col
+	for child in node.get_children():
+		_update_alpha(child, alpha)
