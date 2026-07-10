@@ -1,0 +1,86 @@
+{
+  "tutor_version": 1,
+  "id": "blender-donut-base-mesh",
+  "editor": "blender",
+  "editor_version": "4.5",
+  "title": "Donut tutorial: model the base torus",
+  "description": "The opening modeling beats of the classic donut tutorial, disseminated into guided steps. Golden tutorial for the Blender host MVP. Demonstrates area-level grounding, operator and datapath completion checks, and shortcut-driven steps.",
+  "source": {
+    "kind": "text",
+    "ref": "Blender Guru donut tutorial, part 2 (modeling), paraphrased steps"
+  },
+  "sigma_tier": 0,
+  "requires": [
+    { "kind": "mode_equals", "mode": "OBJECT" }
+  ],
+  "steps": [
+    {
+      "id": "s01",
+      "instruction": "Delete the default cube: click it in the 3D Viewport, press X, then click Delete.",
+      "target": { "kind": "area", "type": "VIEW_3D" },
+      "shortcut": "X",
+      "completion": { "kind": "operator_executed", "bl_idname": "object.delete" },
+      "machine_action": { "python": "bpy.ops.object.delete()" }
+    },
+    {
+      "id": "s02",
+      "instruction": "Add a torus: in the 3D Viewport header, click Add > Mesh > Torus.",
+      "target": { "kind": "region", "type": "VIEW_3D", "region": "HEADER" },
+      "shortcut": "Shift+A",
+      "completion": { "kind": "object_added", "type": "MESH", "name": "Torus" },
+      "machine_action": { "python": "bpy.ops.mesh.primitive_torus_add(major_radius=1.0, minor_radius=0.4)" }
+    },
+    {
+      "id": "s03",
+      "instruction": "Right-click the torus and choose Shade Smooth.",
+      "target": { "kind": "area", "type": "VIEW_3D" },
+      "completion": { "kind": "operator_executed", "bl_idname": "object.shade_smooth" },
+      "machine_action": { "python": "bpy.ops.object.shade_smooth()" }
+    },
+    {
+      "id": "s04",
+      "instruction": "Open the Modifier tab (the wrench icon) in the Properties editor.",
+      "target": { "kind": "properties_tab", "tab": "MODIFIER" },
+      "completion": { "kind": "manual" },
+      "replayable": false
+    },
+    {
+      "id": "s05",
+      "instruction": "Click Add Modifier > Generate > Subdivision Surface.",
+      "target": { "kind": "region", "type": "PROPERTIES", "region": "WINDOW" },
+      "completion": { "kind": "modifier_added", "object": "Torus", "type": "SUBSURF" },
+      "machine_action": { "python": "bpy.data.objects['Torus'].modifiers.new(name='Subdivision', type='SUBSURF')" }
+    },
+    {
+      "id": "s06",
+      "instruction": "Set the modifier's Levels Viewport to 2.",
+      "target": { "kind": "panel", "type": "PROPERTIES", "label": "Subdivision Surface" },
+      "value": "2",
+      "completion": { "kind": "property_equals", "datapath": "objects['Torus'].modifiers['Subdivision'].levels", "value": 2 },
+      "machine_action": { "python": "bpy.data.objects['Torus'].modifiers['Subdivision'].levels = 2" }
+    },
+    {
+      "id": "s07",
+      "instruction": "Hover the 3D Viewport and press Tab to enter Edit Mode.",
+      "target": { "kind": "shortcut", "keys": "Tab" },
+      "completion": { "kind": "mode_equals", "mode": "EDIT_MESH" },
+      "machine_action": { "python": "bpy.ops.object.mode_set(mode='EDIT')" }
+    },
+    {
+      "id": "s08",
+      "instruction": "Press O to enable Proportional Editing.",
+      "detail": "Proportional Editing makes nearby vertices follow your edits with a soft falloff, which is how the donut gets its organic lumpiness.",
+      "target": { "kind": "shortcut", "keys": "O" },
+      "completion": { "kind": "property_equals", "datapath": "scenes['Scene'].tool_settings.use_proportional_edit", "value": true },
+      "machine_action": { "python": "bpy.data.scenes['Scene'].tool_settings.use_proportional_edit = True" }
+    },
+    {
+      "id": "s09",
+      "instruction": "Press Tab again to return to Object Mode, then save the file.",
+      "target": { "kind": "shortcut", "keys": "Tab" },
+      "shortcut": "Ctrl+S",
+      "completion": { "kind": "saved" },
+      "replayable": false
+    }
+  ]
+}
