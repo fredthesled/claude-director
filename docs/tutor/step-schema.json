@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tutor.step-schema.v1",
+  "title": "Tutor tutorial document",
+  "type": "object",
+  "required": ["tutor_version", "id", "editor", "editor_version", "title", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "tutor_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "editor": { "enum": ["godot", "blender"] },
+    "editor_version": { "type": "string", "description": "Editor version the locators were last verified against, e.g. '4.6' or '4.5-LTS'." },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "source": {
+      "type": "object",
+      "required": ["kind", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["url", "text", "file", "video"] },
+        "ref": { "type": "string" }
+      }
+    },
+    "sigma_tier": { "type": "integer", "minimum": 0, "maximum": 4, "default": 0 },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/condition" },
+      "description": "Preconditions checked before the tutorial starts."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/step" }
+    }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "required": ["id", "instruction", "completion"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^s[0-9]{2,}$" },
+        "instruction": { "type": "string", "description": "One imperative sentence, one editor action." },
+        "detail": { "type": "string", "description": "Longer explanation, shown on Hint." },
+        "target": { "$ref": "#/definitions/locator" },
+        "completion": { "$ref": "#/definitions/condition" },
+        "machine_action": { "$ref": "#/definitions/machineAction" },
+        "value": { "type": "string", "description": "Literal the user must type or set, verbatim from the source." },
+        "shortcut": { "type": "string", "description": "Key chord, e.g. 'Ctrl+N' or 'Tab'." },
+        "replayable": { "type": "boolean", "default": true, "description": "False when the machine action cannot run headless (UI-bound operator)." }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "dock", "menu", "button", "scene_tree_item", "inspector_property",
+            "main_screen", "viewport", "bottom_panel",
+            "area", "region", "properties_tab", "panel", "shortcut", "operator"
+          ]
+        },
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "text": { "type": "string" },
+        "tooltip": { "type": "string" },
+        "scope": { "$ref": "#/definitions/locator" },
+        "node_path": { "type": "string" },
+        "property": { "type": "string" },
+        "type": { "type": "string", "description": "Blender area type, e.g. VIEW_3D, PROPERTIES, OUTLINER." },
+        "region": { "type": "string", "description": "Blender region type: WINDOW, HEADER, UI, TOOLS, NAV_BAR." },
+        "tab": { "type": "string", "description": "Blender properties tab: OBJECT, MODIFIER, MATERIAL, RENDER, ..." },
+        "bl_idname": { "type": "string" },
+        "label": { "type": "string" },
+        "keys": { "type": "string" }
+      },
+      "description": "Godot kinds: dock, menu, button, scene_tree_item, inspector_property, main_screen, viewport, bottom_panel. Blender kinds: area, region, properties_tab, panel, shortcut, operator."
+    },
+    "condition": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "node_added", "node_selected", "property_equals", "script_attached",
+            "signal_connected", "scene_open", "scene_saved", "file_exists",
+            "input_action_exists", "main_screen",
+            "operator_executed", "object_added", "mode_equals", "modifier_added",
+            "datablock_exists", "saved",
+            "manual"
+          ]
+        },
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "parent": { "type": "string" },
+        "path": { "type": "string" },
+        "prop": { "type": "string" },
+        "value": {},
+        "script": { "type": "string" },
+        "source": { "type": "string" },
+        "signal": { "type": "string" },
+        "target": { "type": "string" },
+        "method": { "type": "string" },
+        "datapath": { "type": "string", "description": "Blender RNA datapath rooted at bpy.data, e.g. objects['Torus'].modifiers[0].levels" },
+        "bl_idname": { "type": "string" },
+        "mode": { "type": "string" },
+        "object": { "type": "string" },
+        "collection": { "type": "string", "description": "bpy.data collection name, e.g. materials, objects, node_groups." }
+      },
+      "description": "Godot kinds: node_added, node_selected, property_equals(path,prop,value), script_attached, signal_connected, scene_open, scene_saved, file_exists, input_action_exists, main_screen. Blender kinds: operator_executed, property_equals(datapath,value), object_added, mode_equals, modifier_added, datablock_exists, saved. Shared: manual."
+    },
+    "machineAction": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["tool", "input"],
+          "additionalProperties": false,
+          "properties": {
+            "tool": { "type": "string", "description": "Claude Director tool name, e.g. node_add, node_prop, sig_connect." },
+            "input": { "type": "object" }
+          }
+        },
+        {
+          "required": ["python"],
+          "additionalProperties": false,
+          "properties": {
+            "python": { "type": "string", "description": "Single Blender Python statement executed with only bpy in scope." }
+          }
+        }
+      ]
+    }
+  }
+}

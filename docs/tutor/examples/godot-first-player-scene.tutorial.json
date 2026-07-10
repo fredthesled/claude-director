@@ -1,0 +1,91 @@
+{
+  "tutor_version": 1,
+  "id": "godot-first-player-scene",
+  "editor": "godot",
+  "editor_version": "4.6",
+  "title": "Your first 2D game: create the Player scene",
+  "description": "The player-scene portion of the official 'Your first 2D game' tutorial, disseminated into guided steps. Golden tutorial for the Godot host MVP.",
+  "source": {
+    "kind": "url",
+    "ref": "https://docs.godotengine.org/en/stable/getting_started/first_2d_game/02.player_scene.html"
+  },
+  "sigma_tier": 0,
+  "requires": [
+    { "kind": "file_exists", "path": "res://project.godot" }
+  ],
+  "steps": [
+    {
+      "id": "s01",
+      "instruction": "Click Scene > New Scene in the main menu.",
+      "detail": "This opens an empty scene tab so the player can be built as its own reusable scene.",
+      "target": { "kind": "menu", "path": "Scene/New Scene" },
+      "shortcut": "Ctrl+N",
+      "completion": { "kind": "manual" },
+      "replayable": false
+    },
+    {
+      "id": "s02",
+      "instruction": "In the Scene dock, click Other Node, search for Area2D, and press Create.",
+      "detail": "Area2D lets the player detect overlapping bodies (the mobs) without physics simulation. The create-node dialog is a separate window, so follow the search field there.",
+      "target": { "kind": "button", "scope": { "kind": "dock", "name": "SceneTree" }, "text": "Other Node" },
+      "completion": { "kind": "node_added", "type": "Area2D", "parent": "" },
+      "machine_action": { "tool": "node_add", "input": { "type": "Area2D", "name": "Player", "parent": "" } }
+    },
+    {
+      "id": "s03",
+      "instruction": "Double-click the root node in the Scene dock and rename it to Player.",
+      "target": { "kind": "scene_tree_item", "node_path": "." },
+      "value": "Player",
+      "completion": { "kind": "property_equals", "path": ".", "prop": "name", "value": "Player" },
+      "machine_action": { "tool": "node_prop", "input": { "path": ".", "prop": "name", "value": "Player" } }
+    },
+    {
+      "id": "s04",
+      "instruction": "Save the scene as player.tscn.",
+      "target": { "kind": "menu", "path": "Scene/Save Scene" },
+      "shortcut": "Ctrl+S",
+      "value": "player.tscn",
+      "completion": { "kind": "file_exists", "path": "res://player.tscn" },
+      "machine_action": { "tool": "scene_save", "input": { "path": "res://player.tscn" } }
+    },
+    {
+      "id": "s05",
+      "instruction": "Add an AnimatedSprite2D as a child of Player.",
+      "detail": "Select Player, then click the + (Add Child Node) button in the Scene dock and pick AnimatedSprite2D.",
+      "target": { "kind": "button", "scope": { "kind": "dock", "name": "SceneTree" }, "tooltip": "Add Child Node" },
+      "completion": { "kind": "node_added", "type": "AnimatedSprite2D", "parent": "." },
+      "machine_action": { "tool": "node_add", "input": { "type": "AnimatedSprite2D", "name": "AnimatedSprite2D", "parent": "." } }
+    },
+    {
+      "id": "s06",
+      "instruction": "With AnimatedSprite2D selected, set Scale to (0.5, 0.5) in the Inspector.",
+      "target": { "kind": "inspector_property", "property": "scale" },
+      "value": "0.5, 0.5",
+      "completion": { "kind": "property_equals", "path": "AnimatedSprite2D", "prop": "scale", "value": [0.5, 0.5] },
+      "machine_action": { "tool": "node_prop", "input": { "path": "AnimatedSprite2D", "prop": "scale", "value": [0.5, 0.5] } }
+    },
+    {
+      "id": "s07",
+      "instruction": "Add a CollisionShape2D as a child of Player.",
+      "target": { "kind": "button", "scope": { "kind": "dock", "name": "SceneTree" }, "tooltip": "Add Child Node" },
+      "completion": { "kind": "node_added", "type": "CollisionShape2D", "parent": "." },
+      "machine_action": { "tool": "node_add", "input": { "type": "CollisionShape2D", "name": "CollisionShape2D", "parent": "." } }
+    },
+    {
+      "id": "s08",
+      "instruction": "In the Inspector, set the CollisionShape2D's Shape to a new CapsuleShape2D.",
+      "detail": "Click the Shape dropdown and choose New CapsuleShape2D. The checker compares the assigned resource's class name.",
+      "target": { "kind": "inspector_property", "property": "shape" },
+      "completion": { "kind": "property_equals", "path": "CollisionShape2D", "prop": "shape", "value": "CapsuleShape2D" },
+      "machine_action": { "tool": "res_new", "input": { "type": "CapsuleShape2D", "node": "CollisionShape2D", "prop": "shape", "init": {} } }
+    },
+    {
+      "id": "s09",
+      "instruction": "Attach a script to Player: right-click the Player node and choose Attach Script, keep the default path player.gd, and press Create.",
+      "target": { "kind": "scene_tree_item", "node_path": "." },
+      "value": "res://player.gd",
+      "completion": { "kind": "script_attached", "path": ".", "script": "res://player.gd" },
+      "machine_action": { "tool": "node_script", "input": { "node": ".", "script": "extends Area2D\n\nfunc _ready() -> void:\n\tpass\n" } }
+    }
+  ]
+}
